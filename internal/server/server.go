@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"sync"
 
 	"github.com/0xFilosoF/pow-ddos-guard/internal/server/handler"
 	"github.com/0xFilosoF/pow-ddos-guard/internal/shared/pow"
@@ -14,6 +15,7 @@ import (
 type Server struct {
 	Hashcash *pow.Hashcash
 	cfg      *config.Config[config.ServerParams]
+	listener net.Listener
 }
 
 func New(cfg *config.Config[config.ServerParams]) *Server {
@@ -46,6 +48,7 @@ func (s *Server) Start() error {
 		})
 	}
 
+	s.listener = ln
 	zap.L().Info("Listening TCP server started", zap.String("address", s.cfg.App.Addr))
 
 	for {
@@ -63,31 +66,26 @@ func (s *Server) Start() error {
 	}
 }
 
-// func (s *Server) Shutdown(ctx context.Context) error {
-// 	errCh := make(chan error, 1)
-//
-// 	wg := sync.WaitGroup{}
-// 	const workersCount = 2
-// 	wg.Add(workersCount)
-//
-// 	go func() {
-// 		defer wg.Done()
-// 		s.grpcSrv.GracefulStop()
-// 	}()
-//
-// 	go func() {
-// 		defer wg.Done()
-// 		if err := s.collector.Shutdown(ctx); err != nil {
-// 			errCh <- err
-// 		}
-// 	}()
-//
-// 	wg.Wait()
-// 	close(errCh)
-//
-// 	if err := <-errCh; err != nil {
-// 		return err
-// 	}
-//
-// 	return nil
-// }
+func (s *Server) Shutdown(_ context.Context) error {
+	errCh := make(chan error, 1)
+
+	wg := sync.WaitGroup{}
+	const workersCount = 1
+	wg.Add(workersCount)
+
+	go func() {
+		defer wg.Done()
+		if err := s.listener.Close(); err != nil {
+			errCh <- err
+		}
+	}()
+
+	wg.Wait()
+	close(errCh)
+
+	if err := <-errCh; err != nil {
+		return err
+	}
+
+	return nil
+}
