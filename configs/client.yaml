@@ -1,0 +1,12 @@
+app:
+  addr: ':3000' # 8443 with tls
+  name: client-pow-ddos-guard
+tls:
+  enabled: false
+  cert: certs/server.crt
+  key: certs/server.pem
+log:
+  level: debug
+params:
+  pow:
+    salt_len: 8
