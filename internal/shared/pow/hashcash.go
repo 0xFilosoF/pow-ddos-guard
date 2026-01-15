@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	maxIterations    int    = 1 << 20        // Max iterations to find a solution
+	maxIterations    int    = 1 << 32        // Max iterations to find a solution
 	hashcashV1Length int    = 7              // hashcash stamp v1 format (v:bits:date:resource:extension:nonce)
 	timeFormat       string = "060102150405" // YYMMDDhhmmss
 )
@@ -38,7 +38,7 @@ type Hashcash struct {
 // saltLen: length of rand field (chars) - base64 chars are fine
 // extension: extension field
 // expireSeconds: if>0, stamp date must be within this TTL window.
-func New(bits uint, saltLen uint, extension string, expired int64) *Hashcash {
+func New(bits uint, saltLen uint, expired int64, extension string) *Hashcash {
 	return &Hashcash{
 		bits:      bits,
 		saltLen:   saltLen,
@@ -46,6 +46,10 @@ func New(bits uint, saltLen uint, extension string, expired int64) *Hashcash {
 		expired:   expired,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
+}
+
+func Default() *Hashcash {
+	return New(20, 8, 30, "")
 }
 
 // Mint a new hashcash v1 stamp for resource.
@@ -95,12 +99,13 @@ func (h *Hashcash) Check(stamp string) bool {
 }
 
 // CheckNoDate validates stamp ignoring date.
-// func (h *Hashcash) CheckNoDate(stamp string) bool {
-// 	if err := h.validateBasic(stamp); err != nil {
-// 		return false
-// 	}
-// 	return h.checkZerosBits(stamp, h.bits)
-// }
+func (h *Hashcash) CheckNoDate(stamp string) bool {
+	_, err := h.validate(stamp)
+	if err != nil {
+		return false
+	}
+	return h.checkZerosBits(stamp)
+}
 
 func (h *Hashcash) validate(stamp string) (*ParsedV1, error) {
 	p, err := Parse(stamp)
