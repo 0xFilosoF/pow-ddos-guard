@@ -2,10 +2,9 @@ package handler
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"net"
-	"time"
 
 	"github.com/0xFilosoF/pow-ddos-guard/internal/server/quote"
 	"github.com/0xFilosoF/pow-ddos-guard/internal/shared/challenge"
@@ -16,7 +15,8 @@ import (
 )
 
 type sessionHandler struct {
-	ch *challenge.Challenge
+	ch      *challenge.Challenge
+	rawConn net.Conn
 	// mu sync.Mutex // if conn not closed
 }
 
@@ -24,22 +24,23 @@ func NewConn(cfg *config.Config[config.ServerParams], hc *pow.Hashcash, rawConn 
 	defer rawConn.Close()
 	ctx := context.Background()
 
-	if cfg.TLS.Enabled {
-		if tc, ok := rawConn.(*tls.Conn); ok {
-			_ = tc.SetDeadline(time.Now().UTC().Add(cfg.Params.Handshake))
-			if err := tc.HandshakeContext(ctx); err != nil {
-				zap.L().Error("TLS handshake error", zap.Error(err))
-				return
-			}
-			_ = tc.SetDeadline(time.Time{})
-		}
-	}
+	// if cfg.TLS.Enabled {
+	// 	if tc, ok := rawConn.(*tls.Conn); ok {
+	// 		_ = tc.SetDeadline(time.Now().UTC().Add(cfg.Params.Handshake))
+	// 		if err := tc.HandshakeContext(ctx); err != nil {
+	// 			zap.L().Error("TLS handshake error", zap.Error(err))
+	// 			return
+	// 		}
+	// 		_ = tc.SetDeadline(time.Time{})
+	// 	}
+	// }
+	//
+	// const multiplier = 2
+	// _, ttl := hc.GetChallenge()
+	// _ = rawConn.SetReadDeadline(time.Now().UTC().Add(ttl * multiplier))
+	// _ = rawConn.SetWriteDeadline(time.Now().UTC().Add(ttl * multiplier))
 
-	const multiplier = 2
-	_, ttl := hc.GetChallenge()
-	_ = rawConn.SetReadDeadline(time.Now().UTC().Add(ttl * multiplier))
-	_ = rawConn.SetWriteDeadline(time.Now().UTC().Add(ttl * multiplier))
-
+	// TODO: to other function with mutex
 	ch, err := challenge.New(hc)
 	if err != nil {
 		zap.L().Error("Failed to create a challenge", zap.Error(err))
@@ -47,7 +48,8 @@ func NewConn(cfg *config.Config[config.ServerParams], hc *pow.Hashcash, rawConn 
 	}
 
 	handler := &sessionHandler{
-		ch: ch,
+		ch:      ch,
+		rawConn: rawConn,
 	}
 
 	stream := jsonrpc2.NewPlainObjectStream(rawConn)
@@ -61,9 +63,18 @@ func NewConn(cfg *config.Config[config.ServerParams], hc *pow.Hashcash, rawConn 
 	}
 
 	<-rpcConn.DisconnectNotify()
+	fmt.Println("Disconnected")
 }
 
 func (sh *sessionHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	zap.L().Info(
+		"Received request",
+		zap.String("address", sh.rawConn.RemoteAddr().String()),
+		zap.String("id", req.ID.String()),
+		zap.String("method", req.Method),
+	)
+
+	// TODO: add method for get challenge
 	switch req.Method {
 	case "wow.verify":
 		if req.Params == nil {
@@ -95,6 +106,7 @@ func (sh *sessionHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *
 		}
 
 		_ = conn.Reply(ctx, req.ID, challenge.VerifyResponse{Quote: quote.Random()})
+
 		return
 	default:
 		_ = conn.ReplyWithError(
