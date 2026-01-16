@@ -26,7 +26,7 @@ func TestStampFormat(t *testing.T) {
 	expectedDate := time.Now().UTC().Format("0601021504")
 
 	for _, tt := range stampTests {
-		h := pow.New(tt.bits, tt.saltLen, 10, tt.extension)
+		h := pow.New(tt.bits, tt.saltLen, 10*time.Second, tt.extension)
 
 		stamp, err := h.Mint(tt.resource)
 		if err != nil {
