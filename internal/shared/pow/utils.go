@@ -5,8 +5,8 @@ const (
 	maxByteValue = 0xFF
 )
 
-// HasLeadingZeroBits classis anti-ddos solution.
-func HasLeadingZeroBits(b []byte, bits int) bool {
+// hasLeadingZeroBits classis anti-ddos solution.
+func hasLeadingZeroBits(b []byte, bits int) bool {
 	if bits <= 0 {
 		return true
 	}

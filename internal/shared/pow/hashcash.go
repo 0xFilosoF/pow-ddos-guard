@@ -26,10 +26,10 @@ var (
 // Hashcash provides an implementation of hashcash v1 (anti-ddos friendly)
 // Stamp format: ver:bits:date:resource:extension:salt:nonce.
 type Hashcash struct {
-	bits      uint          // Number of leading zero bits required (difficulty)
+	Bits      uint          // Number of leading zero bits required (difficulty)
+	Expired   time.Duration // TTL window in seconds (0 => ignore date)
 	saltLen   uint          // Random salt length (rand field length in chars)
 	extension string        // Extension field
-	expired   time.Duration // TTL window in seconds (0 => ignore date)
 	now       func() time.Time
 }
 
@@ -41,10 +41,10 @@ type Hashcash struct {
 func New(bits uint, saltLen uint, expired time.Duration, extension string) *Hashcash {
 	// time.Duration(h.expired)*time.Second
 	return &Hashcash{
-		bits:      bits,
+		Bits:      bits,
+		Expired:   expired,
 		saltLen:   saltLen,
 		extension: extension,
-		expired:   expired,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -59,7 +59,7 @@ func Default() *Hashcash {
 }
 
 func (hc *Hashcash) GetChallenge() (uint, time.Duration) {
-	return hc.bits, hc.expired
+	return hc.Bits, hc.Expired
 }
 
 // Mint a new hashcash v1 stamp for resource.
@@ -84,7 +84,7 @@ func (hc *Hashcash) Mint(resource string) (string, error) {
 		nonce := start + uint64(i)
 
 		stamp := fmt.Sprintf("1:%d:%s:%s:%s:%s:%x",
-			hc.bits, date, resource, hc.extension, salt, nonce)
+			hc.Bits, date, resource, hc.extension, salt, nonce)
 
 		if hc.checkZerosBits(stamp) {
 			return stamp, nil
@@ -100,7 +100,7 @@ func (hc *Hashcash) Check(stamp string) bool {
 	if err != nil {
 		return false
 	}
-	if hc.expired != 0 {
+	if hc.Expired != 0 {
 		if err = hc.checkDate(p); err != nil {
 			return false
 		}
@@ -122,7 +122,7 @@ func (hc *Hashcash) validate(stamp string) (*ParsedV1, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p.Bits < hc.bits {
+	if p.Bits < hc.Bits {
 		return nil, ErrInvalidStamp
 	}
 	return p, nil
@@ -149,7 +149,7 @@ func (hc *Hashcash) getSalt() (string, error) {
 func (hc *Hashcash) checkZerosBits(stamp string) bool {
 	sum := sha256.Sum256([]byte(stamp))
 	//nolint:gosec // overflow not possible, bits is quite small
-	return HasLeadingZeroBits(sum[:], int(hc.bits))
+	return hasLeadingZeroBits(sum[:], int(hc.Bits))
 }
 
 func (hc *Hashcash) checkDate(p *ParsedV1) error {
@@ -158,7 +158,7 @@ func (hc *Hashcash) checkDate(p *ParsedV1) error {
 	if p.Date.After(now.Add(time.Second)) {
 		return ErrExpired
 	}
-	if now.Sub(p.Date) > hc.expired {
+	if now.Sub(p.Date) > hc.Expired {
 		return ErrExpired
 	}
 
