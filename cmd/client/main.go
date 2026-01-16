@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/0xFilosoF/pow-ddos-guard/internal/client"
 	"github.com/0xFilosoF/pow-ddos-guard/pkg/config"
 	gracefullserver "github.com/0xFilosoF/pow-ddos-guard/pkg/gracefullServer"
@@ -26,13 +24,13 @@ func main() {
 	}
 
 	sync := logger.Init(logPreset, clientConfig.App.Name, logLevel)
+	//nolint:errcheck // defer sync zap logger
+	defer sync()
 
 	cli := client.New(clientConfig)
 
 	if err := gracefullserver.New(cli).Start(); err != nil {
 		zap.L().Error("TCP client exited with error", zap.Error(err))
-		_ = sync()
-		os.Exit(1)
+		panic(err)
 	}
-	_ = sync()
 }

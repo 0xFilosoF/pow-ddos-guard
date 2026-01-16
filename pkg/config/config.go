@@ -24,10 +24,20 @@ type ServerParams struct {
 	}
 }
 
+func (ServerParams) IsServer() bool { return true }
+
 type ClientParams struct {
-	PoW struct {
+	Timeout time.Duration `mapstructure:"timeout" validate:"required"`
+	PoW     struct {
 		SaltLen uint `mapstructure:"salt_len" validate:"required"`
 	}
+}
+
+func (ClientParams) IsServer() bool { return false }
+
+type Params interface {
+	ServerParams | ClientParams
+	IsServer() bool
 }
 
 type Config[T any] struct {
@@ -47,14 +57,20 @@ type Config[T any] struct {
 	Params T `mapstructure:"params" validate:"required"`
 }
 
-func New[T any](filePath string) *Config[T] {
+func New[T Params](filePath string) *Config[T] {
+	var p T
 	_ = godotenv.Load(envLocalFileName, envFileName, envProductionFileName)
 
 	v := viper.New()
 	v.SetConfigFile(filePath)
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "__"))
-	v.SetEnvPrefix("")
+	if p.IsServer() {
+		v.SetEnvPrefix("src")
+	} else {
+		v.SetEnvPrefix("cli")
+	}
+
 	v.AutomaticEnv()
 
 	if err := v.ReadInConfig(); err != nil {

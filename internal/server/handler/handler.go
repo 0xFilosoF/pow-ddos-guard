@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/0xFilosoF/pow-ddos-guard/internal/server/quote"
 	"github.com/0xFilosoF/pow-ddos-guard/internal/shared/challenge"
@@ -15,41 +17,39 @@ import (
 )
 
 type sessionHandler struct {
-	ch      *challenge.Challenge
-	rawConn net.Conn
-	// mu sync.Mutex // if conn not closed
+	hashcash *pow.Hashcash
+	ch       *challenge.Challenge
+	rawConn  net.Conn
+	mu       sync.Mutex
 }
 
 func NewConn(cfg *config.Config[config.ServerParams], hc *pow.Hashcash, rawConn net.Conn) {
 	defer rawConn.Close()
 	ctx := context.Background()
 
-	// if cfg.TLS.Enabled {
-	// 	if tc, ok := rawConn.(*tls.Conn); ok {
-	// 		_ = tc.SetDeadline(time.Now().UTC().Add(cfg.Params.Handshake))
-	// 		if err := tc.HandshakeContext(ctx); err != nil {
-	// 			zap.L().Error("TLS handshake error", zap.Error(err))
-	// 			return
-	// 		}
-	// 		_ = tc.SetDeadline(time.Time{})
-	// 	}
-	// }
-	//
-	// const multiplier = 2
-	// _, ttl := hc.GetChallenge()
-	// _ = rawConn.SetReadDeadline(time.Now().UTC().Add(ttl * multiplier))
-	// _ = rawConn.SetWriteDeadline(time.Now().UTC().Add(ttl * multiplier))
-
-	// TODO: to other function with mutex
-	ch, err := challenge.New(hc)
-	if err != nil {
-		zap.L().Error("Failed to create a challenge", zap.Error(err))
-		return
+	if cfg.TLS.Enabled {
+		if tc, ok := rawConn.(*tls.Conn); ok {
+			_ = tc.SetDeadline(time.Now().Add(cfg.Params.Handshake))
+			if err := tc.HandshakeContext(ctx); err != nil {
+				zap.L().Error("TLS handshake error", zap.Error(err))
+				return
+			}
+			_ = tc.SetDeadline(time.Time{})
+		}
 	}
 
+	const multiplier = 2
+	_, ttl := hc.GetChallenge()
+	_ = rawConn.SetReadDeadline(time.Now().Add(ttl * multiplier))
+	_ = rawConn.SetWriteDeadline(time.Now().Add(ttl * multiplier))
+
 	handler := &sessionHandler{
-		ch:      ch,
-		rawConn: rawConn,
+		hashcash: hc,
+		rawConn:  rawConn,
+	}
+	if err := handler.generateChallenge(); err != nil {
+		zap.L().Error("Failed to generate a challenge", zap.Error(err))
+		return
 	}
 
 	stream := jsonrpc2.NewPlainObjectStream(rawConn)
@@ -57,13 +57,12 @@ func NewConn(cfg *config.Config[config.ServerParams], hc *pow.Hashcash, rawConn 
 	defer rpcConn.Close()
 
 	// notify challenge
-	if rpcErr := rpcConn.Notify(ctx, "wow.challenge", ch); rpcErr != nil {
+	if rpcErr := rpcConn.Notify(ctx, "wow.challenge", handler.ch); rpcErr != nil {
 		zap.L().Error("Failed to notify challenge", zap.Error(rpcErr))
 		return
 	}
 
 	<-rpcConn.DisconnectNotify()
-	fmt.Println("Disconnected")
 }
 
 func (sh *sessionHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
@@ -74,8 +73,28 @@ func (sh *sessionHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *
 		zap.String("method", req.Method),
 	)
 
-	// TODO: add method for get challenge
 	switch req.Method {
+	case "wow.create":
+		if sh.ch == nil {
+			if err := sh.generateChallenge(); err != nil {
+				_ = conn.ReplyWithError(
+					ctx,
+					req.ID,
+					&jsonrpc2.Error{
+						Code:    jsonrpc2.CodeInternalError,
+						Message: "failed to generate a challenge",
+					},
+				)
+				return
+			}
+		}
+
+		if err := conn.Notify(ctx, "wow.challenge", sh.ch); err != nil {
+			zap.L().Error("Failed to notify challenge", zap.Error(err))
+			return
+		}
+
+		return
 	case "wow.verify":
 		if req.Params == nil {
 			_ = conn.ReplyWithError(
@@ -96,6 +115,18 @@ func (sh *sessionHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *
 			return
 		}
 
+		if sh.ch == nil {
+			_ = conn.ReplyWithError(
+				ctx,
+				req.ID,
+				&jsonrpc2.Error{
+					Code:    jsonrpc2.CodeInvalidRequest,
+					Message: "challenge not found, try again",
+				},
+			)
+			return
+		}
+
 		if err := sh.ch.Verify(vr); err != nil {
 			_ = conn.ReplyWithError(
 				ctx,
@@ -103,6 +134,11 @@ func (sh *sessionHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *
 				&jsonrpc2.Error{Code: jsonrpc2.CodeInvalidRequest, Message: err.Error()},
 			)
 			return
+		}
+
+		if err := sh.generateChallenge(); err != nil {
+			zap.L().Error("Failed to generate a challenge", zap.Error(err))
+			sh.ch = nil
 		}
 
 		_ = conn.Reply(ctx, req.ID, challenge.VerifyResponse{Quote: quote.Random()})
@@ -116,4 +152,17 @@ func (sh *sessionHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *
 		)
 		return
 	}
+}
+
+func (sh *sessionHandler) generateChallenge() error {
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+
+	ch, err := challenge.New(sh.hashcash)
+	if err != nil {
+		return err
+	}
+
+	sh.ch = ch
+	return nil
 }

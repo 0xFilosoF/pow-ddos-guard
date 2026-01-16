@@ -19,22 +19,22 @@ lint-fast: ## - Run lint with fast flag for partial checking code style
 ##
 ## Run:
 build: ## - Build server and client
-build: build-server build-client
+build: create-build-dirs build-server build-client
 
 build-server: ## - Build server
-	go build -o $(PROJECT_DIR)/cmd/server/main.go $(PROJECT_BIN)/debug/server 
+	go build -o $(PROJECT_BIN)/debug/server $(PROJECT_DIR)/cmd/server/main.go
 
 build-client: ## - Build client
-	go build -o $(PROJECT_DIR)/cmd/client/main.go $(PROJECT_BIN)/debug/client 
+	go build -o $(PROJECT_BIN)/debug/client $(PROJECT_DIR)/cmd/client/main.go
 
 build-release: ## - Build server and client with release flags
-build-release: build-release-server build-release-client
+build-release: create-build-dirs build-release-server build-release-client
 
 build-release-server: ## - Build server with release flags
-	go CGO_ENABLED=0 GOOS=linux build -o $(PROJECT_DIR)/cmd/server/main.go $(PROJECT_BIN)/release/server-release
+	CGO_ENABLED=0 GOOS=linux go build -o $(PROJECT_BIN)/release/server-release $(PROJECT_DIR)/cmd/server/main.go
 
 build-release-client: ## - Build client with release flags
-	go CGO_ENABLED=0 GOOS=linux build -o $(PROJECT_DIR)/cmd/client/main.go $(PROJECT_BIN)/release/client-release
+	CGO_ENABLED=0 GOOS=linux go build -o $(PROJECT_BIN)/release/client-release $(PROJECT_DIR)/cmd/client/main.go
 
 dev-server: ## - Dev run server
 	go run cmd/server/main.go
@@ -65,6 +65,9 @@ help: ## - Show help message
 
 clean: ## - Clear bin dir and git hooks
 	rm -rf $(PROJECT_BIN) && rm -f .git/hooks/pre-commit
+
+create-build-dirs: ## - Create bin dirs
+	mkdir -p $(PROJECT_BIN)/debug && mkdir -p $(PROJECT_BIN)/release
 
 install-deps: ## - Install all deps in repo
 install-deps: .install-linter .install-hooks

@@ -9,5 +9,6 @@ tls:
 log:
   level: debug
 params:
+  timeout: 5s
   pow:
     salt_len: 8

@@ -32,7 +32,7 @@ func New(hc *pow.Hashcash) (*Challenge, error) {
 		ID:           id,
 		ChallengeB64: chB64,
 		Difficulty:   difficulty,
-		ExpiresAt:    time.Now().UTC().Add(ttl).Unix(),
+		ExpiresAt:    time.Now().Add(ttl).Unix(),
 		hc:           hc,
 	}, nil
 }

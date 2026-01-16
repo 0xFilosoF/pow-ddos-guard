@@ -29,7 +29,7 @@ func (c *Client) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
 
-	conn, err := c.getConn(ctx)
+	conn, err := c.getConn(ctx, c.cfg.Params.Timeout)
 	if err != nil {
 		return err
 	}
@@ -39,6 +39,7 @@ func (c *Client) Start() error {
 	h := handler.New(ctx, pow.New(0, c.cfg.Params.PoW.SaltLen, 0, ""))
 	stream := jsonrpc2.NewPlainObjectStream(conn)
 	rpcConn := jsonrpc2.NewConn(ctx, stream, h)
+	go h.GenerateRequestsAsync(ctx, rpcConn)
 	defer rpcConn.Close()
 
 	select {
@@ -71,28 +72,21 @@ func (c *Client) Shutdown(_ context.Context) error {
 	return nil
 }
 
-func (c *Client) getConn(ctx context.Context) (net.Conn, error) {
-	d := &net.Dialer{
-		Timeout:   5 * time.Second,
-		KeepAlive: 30 * time.Second,
+func (c *Client) getConn(ctx context.Context, timeout time.Duration) (net.Conn, error) {
+	netDialer := &net.Dialer{
+		Timeout: timeout,
 	}
 
 	if c.cfg.TLS.Enabled {
-		tlsCfg := &tls.Config{
-			MinVersion: tls.VersionTLS13,
+		tlsDialer := &tls.Dialer{
+			NetDialer: netDialer,
+			Config: &tls.Config{
+				MinVersion: tls.VersionTLS13,
+			},
 		}
 
-		// conn, err := tls.Dial("tcp", c.cfg.App.Addr, tlsCfg)
-		conn, err := tls.DialWithDialer(d, "tcp", c.cfg.App.Addr, tlsCfg)
-		if err != nil {
-			return nil, err
-		}
-		return conn, nil
+		return tlsDialer.DialContext(ctx, "tcp", c.cfg.App.Addr)
 	}
 
-	conn, err := d.DialContext(ctx, "tcp", c.cfg.App.Addr)
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
+	return netDialer.DialContext(ctx, "tcp", c.cfg.App.Addr)
 }

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/0xFilosoF/pow-ddos-guard/internal/server"
 	"github.com/0xFilosoF/pow-ddos-guard/pkg/config"
 	gracefullserver "github.com/0xFilosoF/pow-ddos-guard/pkg/gracefullServer"
@@ -26,13 +24,14 @@ func main() {
 	}
 
 	sync := logger.Init(logPreset, serverConfig.App.Name, logLevel)
+	//nolint:errcheck // defer sync zap logger
+	defer sync()
 
 	tcpServer := server.New(serverConfig)
 
 	if err := gracefullserver.New(tcpServer).Start(); err != nil {
 		zap.L().Error("TCP server exited with error", zap.Error(err))
-		_ = sync()
-		os.Exit(1)
+		// NOTE: not using os.Exit because we need call gracefull shutdown
+		panic(err)
 	}
-	_ = sync()
 }
