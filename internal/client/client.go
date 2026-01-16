@@ -3,9 +3,10 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"net"
+	"os"
 	"sync"
-	"time"
 
 	"github.com/0xFilosoF/pow-ddos-guard/internal/client/handler"
 	"github.com/0xFilosoF/pow-ddos-guard/internal/shared/pow"
@@ -29,7 +30,7 @@ func (c *Client) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
 
-	conn, err := c.getConn(ctx, c.cfg.Params.Timeout)
+	conn, err := c.getConn(ctx)
 	if err != nil {
 		return err
 	}
@@ -72,16 +73,22 @@ func (c *Client) Shutdown(_ context.Context) error {
 	return nil
 }
 
-func (c *Client) getConn(ctx context.Context, timeout time.Duration) (net.Conn, error) {
+func (c *Client) getConn(ctx context.Context) (net.Conn, error) {
 	netDialer := &net.Dialer{
-		Timeout: timeout,
+		Timeout: c.cfg.Params.Timeout,
 	}
 
 	if c.cfg.TLS.Enabled {
+		caPem, _ := os.ReadFile(c.cfg.TLS.Cert)
+		pool := x509.NewCertPool()
+		pool.AppendCertsFromPEM(caPem)
+
 		tlsDialer := &tls.Dialer{
 			NetDialer: netDialer,
 			Config: &tls.Config{
+				RootCAs:    pool,
 				MinVersion: tls.VersionTLS13,
+				ServerName: "server",
 			},
 		}
 

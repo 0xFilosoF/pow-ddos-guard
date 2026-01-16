@@ -1,0 +1,60 @@
+services:
+  certgen:
+    image: alpine:3.17
+    command:
+      ['/bin/sh', '-c', 'apk add --no-cache openssl && /generate-cert.sh']
+    volumes:
+      - certs:/certs
+      - ./scripts/generate-cert.sh:/generate-cert.sh:ro
+    networks:
+      - pow-ddos-guard
+
+  server:
+    build:
+      context: .
+      dockerfile: ./cmd/server/Dockerfile
+      target: prod
+    restart: unless-stopped
+    ports:
+      - 8443:8443
+    environment:
+      SRC_APP__ADDR: :8443
+      SRC_DEBUG: false
+      SRC_TLS__ENABLED: true
+      SRC_TLS__CERT: /certs/server.crt
+      SRC_TLS__KEY: /certs/server.key
+    depends_on:
+      certgen:
+        condition: service_started
+    volumes:
+      - certs:/certs:ro
+    networks:
+      - pow-ddos-guard
+
+  client:
+    build:
+      context: .
+      dockerfile: ./cmd/client/Dockerfile
+      target: prod
+    restart: unless-stopped
+    environment:
+      CLI_APP__ADDR: server:8443
+      CLI_DEBUG: false
+      CLI_TLS__ENABLED: true
+      CLI_TLS__CERT: /certs/ca.crt
+    depends_on:
+      certgen:
+        condition: service_started
+    volumes:
+      - certs:/certs:ro
+    networks:
+      - pow-ddos-guard
+
+volumes:
+  certs:
+    name: POW_DDOS_GUARD_DATA_CERTS
+
+networks:
+  pow-ddos-guard:
+    name: deploy_pow-ddos-guard
+    driver: bridge
