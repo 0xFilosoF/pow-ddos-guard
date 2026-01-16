@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"sync"
 
@@ -53,6 +54,10 @@ func (s *Server) Start() error {
 
 	for {
 		rawConn, lnErr := ln.Accept()
+
+		if errors.Is(lnErr, net.ErrClosed) {
+			return lnErr
+		}
 
 		if lnErr != nil {
 			zap.L().Error("Failed to accept connection", zap.Error(lnErr))

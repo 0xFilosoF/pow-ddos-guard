@@ -31,8 +31,9 @@ type ClientParams struct {
 }
 
 type Config[T any] struct {
-	App struct {
-		Addr string `mapstructure:"addr" validate:"required,hostname_port"`
+	Debug bool `mapstructure:"debug"`
+	App   struct {
+		Addr string `mapstructure:"addr" validate:"required"`
 		Name string `mapstructure:"name" validate:"required"`
 	}
 	TLS struct {

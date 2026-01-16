@@ -13,7 +13,7 @@ type VerifyResponse struct {
 	Quote string `json:"quote"`
 }
 
-func (ch *Challenge) Verify(req *VerifyRequest) error {
+func (ch *Challenge) Verify(req VerifyRequest) error {
 	if req.ID != ch.ID {
 		return errors.New("challenge id mismatch")
 	}
