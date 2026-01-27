@@ -136,6 +136,8 @@ func (sh *sessionHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *
 			return
 		}
 
+		// NOTE: generate new challenge with new ID is trustful
+		// and does not allow replay attack with mutex
 		if err := sh.generateChallenge(); err != nil {
 			zap.L().Error("Failed to generate a challenge", zap.Error(err))
 			sh.ch = nil
