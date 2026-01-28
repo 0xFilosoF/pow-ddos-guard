@@ -3,8 +3,6 @@
 A lightweight TCP guard that enforces **Proof-of-Work (PoW)** on every incoming connection before allowing any meaningful interaction.  
 The goal is to make large-scale connection floods economically expensive while keeping the server-side logic simple, fast, and stateless.
 
----
-
 ## Overview
 
 This project demonstrates a **connection-level anti-DDoS mechanism** based on Proof-of-Work.
